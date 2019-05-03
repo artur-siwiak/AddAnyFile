@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices;
-using EnvDTE;
+﻿using EnvDTE;
 using EnvDTE80;
 using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.ComponentModelHost;
@@ -12,26 +7,35 @@ using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using Microsoft.VisualStudio.Text.Editor;
 using Microsoft.VisualStudio.TextManager.Interop;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace MadsKristensen.AddAnyFile
 {
     public static class ProjectHelpers
     {
-        static DTE2 _dte = AddAnyFilePackage._dte;
+        private static readonly DTE2 _dte = AddAnyFilePackage._dte;
 
         public static string GetRootNamespace(this Project project)
         {
             if (project == null)
+            {
                 return null;
+            }
 
-            string ns = project.Name ?? string.Empty;
+            var ns = project.Name ?? string.Empty;
 
             try
             {
-                Property prop = project.Properties.Item("RootNamespace");
+                var prop = project.Properties.Item("RootNamespace");
 
                 if (prop != null && prop.Value != null && !string.IsNullOrEmpty(prop.Value.ToString()))
+                {
                     ns = prop.Value.ToString();
+                }
             }
             catch { /* Project doesn't have a root namespace */ }
 
@@ -55,13 +59,19 @@ namespace MadsKristensen.AddAnyFile
         public static string GetRootFolder(this Project project)
         {
             if (project == null)
+            {
                 return null;
+            }
 
             if (project.IsKind("{66A26720-8FB5-11D2-AA7E-00C04F688DDE}")) //ProjectKinds.vsProjectKindSolutionFolder
+            {
                 return Path.GetDirectoryName(_dte.Solution.FullName);
+            }
 
             if (string.IsNullOrEmpty(project.FullName))
+            {
                 return null;
+            }
 
             string fullPath;
 
@@ -84,13 +94,19 @@ namespace MadsKristensen.AddAnyFile
             }
 
             if (string.IsNullOrEmpty(fullPath))
+            {
                 return File.Exists(project.FullName) ? Path.GetDirectoryName(project.FullName) : null;
+            }
 
             if (Directory.Exists(fullPath))
+            {
                 return fullPath;
+            }
 
             if (File.Exists(fullPath))
+            {
                 return Path.GetDirectoryName(fullPath);
+            }
 
             return null;
         }
@@ -98,14 +114,18 @@ namespace MadsKristensen.AddAnyFile
         public static ProjectItem AddFileToProject(this Project project, FileInfo file, string itemType = null)
         {
             if (project.IsKind(ProjectTypes.ASPNET_5, ProjectTypes.SSDT))
+            {
                 return _dte.Solution.FindProjectItem(file.FullName);
+            }
 
-            string root = project.GetRootFolder();
+            var root = project.GetRootFolder();
 
             if (string.IsNullOrEmpty(root) || !file.FullName.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            {
                 return null;
+            }
 
-            ProjectItem item = project.ProjectItems.AddFromFile(file.FullName);
+            var item = project.ProjectItems.AddFromFile(file.FullName);
             item.SetItemType(itemType);
             return item;
         }
@@ -115,12 +135,16 @@ namespace MadsKristensen.AddAnyFile
             try
             {
                 if (item == null || item.ContainingProject == null)
+                {
                     return;
+                }
 
                 if (string.IsNullOrEmpty(itemType)
                     || item.ContainingProject.IsKind(ProjectTypes.WEBSITE_PROJECT)
                     || item.ContainingProject.IsKind(ProjectTypes.UNIVERSAL_APP))
+                {
                     return;
+                }
 
                 item.Properties.Item("ItemType").Value = itemType;
             }
@@ -132,10 +156,12 @@ namespace MadsKristensen.AddAnyFile
 
         public static bool IsKind(this Project project, params string[] kindGuids)
         {
-            foreach (string guid in kindGuids)
+            foreach (var guid in kindGuids)
             {
                 if (project.Kind.Equals(guid, StringComparison.OrdinalIgnoreCase))
+                {
                     return true;
+                }
             }
 
             return false;
@@ -146,10 +172,14 @@ namespace MadsKristensen.AddAnyFile
             try
             {
                 if (!parent.IsKind("{66A26720-8FB5-11D2-AA7E-00C04F688DDE}") && parent.Collection == null)  // Unloaded
+                {
                     return Enumerable.Empty<Project>();
+                }
 
                 if (!string.IsNullOrEmpty(parent.FullName))
+                {
                     return new[] { parent };
+                }
             }
             catch (COMException)
             {
@@ -168,16 +198,20 @@ namespace MadsKristensen.AddAnyFile
             {
 
                 if (_dte.ActiveSolutionProjects is Array activeSolutionProjects && activeSolutionProjects.Length > 0)
+                {
                     return activeSolutionProjects.GetValue(0) as Project;
+                }
 
-                Document doc = _dte.ActiveDocument;
+                var doc = _dte.ActiveDocument;
 
                 if (doc != null && !string.IsNullOrEmpty(doc.FullName))
                 {
-                    ProjectItem item = _dte.Solution?.FindProjectItem(doc.FullName);
+                    var item = _dte.Solution?.FindProjectItem(doc.FullName);
 
                     if (item != null)
+                    {
                         return item.ContainingProject;
+                    }
                 }
             }
             catch (Exception ex)
@@ -190,9 +224,13 @@ namespace MadsKristensen.AddAnyFile
 
         public static IWpfTextView GetCurentTextView()
         {
-            IComponentModel componentModel = GetComponentModel();
-            if (componentModel == null) return null;
-            IVsEditorAdaptersFactoryService editorAdapter = componentModel.GetService<IVsEditorAdaptersFactoryService>();
+            var componentModel = GetComponentModel();
+            if (componentModel == null)
+            {
+                return null;
+            }
+
+            var editorAdapter = componentModel.GetService<IVsEditorAdaptersFactoryService>();
 
             return editorAdapter.GetWpfTextView(GetCurrentNativeTextView());
         }
@@ -201,7 +239,7 @@ namespace MadsKristensen.AddAnyFile
         {
             var textManager = (IVsTextManager)ServiceProvider.GlobalProvider.GetService(typeof(SVsTextManager));
 
-            ErrorHandler.ThrowOnFailure(textManager.GetActiveView(1, null, out IVsTextView activeView));
+            ErrorHandler.ThrowOnFailure(textManager.GetActiveView(1, null, out var activeView));
             return activeView;
         }
 
@@ -218,10 +256,10 @@ namespace MadsKristensen.AddAnyFile
 
             try
             {
-                monitorSelection.GetCurrentSelection(out IntPtr hierarchyPointer,
-                                                 out uint itemId,
-                                                 out IVsMultiItemSelect multiItemSelect,
-                                                 out IntPtr selectionContainerPointer);
+                monitorSelection.GetCurrentSelection(out var hierarchyPointer,
+                                                 out var itemId,
+                                                 out var multiItemSelect,
+                                                 out var selectionContainerPointer);
 
 
                 if (Marshal.GetTypedObjectForIUnknown(

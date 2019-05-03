@@ -1,4 +1,8 @@
-﻿using System;
+﻿using EnvDTE;
+using EnvDTE80;
+using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Text;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.Design;
 using System.IO;
@@ -9,10 +13,6 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Interop;
-using EnvDTE;
-using EnvDTE80;
-using Microsoft.VisualStudio.Shell;
-using Microsoft.VisualStudio.Text;
 
 namespace MadsKristensen.AddAnyFile
 {
@@ -30,7 +30,7 @@ namespace MadsKristensen.AddAnyFile
 
             _dte = await GetServiceAsync(typeof(DTE)) as DTE2;
 
-             Logger.Initialize(this, Vsix.Name);
+            Logger.Initialize(this, Vsix.Name);
 
             if (await GetServiceAsync(typeof(IMenuCommandService)) is OleMenuCommandService mcs)
             {
@@ -42,43 +42,50 @@ namespace MadsKristensen.AddAnyFile
 
         private async void ExecuteAsync(object sender, EventArgs e)
         {
-            object item = ProjectHelpers.GetSelectedItem();
-            string folder = FindFolder(item);
+            var item = ProjectHelpers.GetSelectedItem();
+            var folder = FindFolder(item);
 
             if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
+            {
                 return;
+            }
 
             var selectedItem = item as ProjectItem;
             var selectedProject = item as Project;
-            Project project = selectedItem?.ContainingProject ?? selectedProject ?? ProjectHelpers.GetActiveProject();
+            var project = selectedItem?.ContainingProject ?? selectedProject ?? ProjectHelpers.GetActiveProject();
 
             if (project == null)
-                return;
-
-            string input = PromptForFileName(folder).TrimStart('/', '\\').Replace("/", "\\");
-
-            if (string.IsNullOrEmpty(input))
-                return;
-
-            string[] parsedInputs = GetParsedInput(input);
-
-            foreach (string inputItem in parsedInputs)
             {
-                input = inputItem;
+                return;
+            }
 
-                if (input.EndsWith("\\", StringComparison.Ordinal))
+            var input = PromptForFileName(folder, project.UniqueName);
+            var inputName = input.Input.TrimStart('/', '\\').Replace("/", "\\");
+
+            if (string.IsNullOrEmpty(inputName))
+            {
+                return;
+            }
+
+            var parsedInputs = GetParsedInput(inputName);
+
+            foreach (var inputItem in parsedInputs)
+            {
+                inputName = inputItem;
+
+                if (inputName.EndsWith("\\", StringComparison.Ordinal))
                 {
-                    input = input + "__dummy__";
+                    inputName = inputName + "__dummy__";
                 }
 
-                var file = new FileInfo(Path.Combine(folder, input));
-                string dir = file.DirectoryName;
+                var file = new FileInfo(Path.Combine(folder, inputName));
+                var dir = file.DirectoryName;
 
                 PackageUtilities.EnsureOutputPath(dir);
 
                 if (!file.Exists)
                 {
-                    int position = await WriteFileAsync(project, file.FullName);
+                    var position = await WriteFileAsync(project, file.FullName, input);
 
                     try
                     {
@@ -106,10 +113,12 @@ namespace MadsKristensen.AddAnyFile
                         // Move cursor into position
                         if (position > 0)
                         {
-                            Microsoft.VisualStudio.Text.Editor.IWpfTextView view = ProjectHelpers.GetCurentTextView();
+                            var view = ProjectHelpers.GetCurentTextView();
 
                             if (view != null)
+                            {
                                 view.Caret.MoveTo(new SnapshotPoint(view.TextBuffer.CurrentSnapshot, position));
+                            }
                         }
 
                         _dte.ExecuteCommand("SolutionExplorer.SyncWithActiveDocument");
@@ -127,14 +136,14 @@ namespace MadsKristensen.AddAnyFile
             }
         }
 
-        private static async Task<int> WriteFileAsync(Project project, string file)
+        private static async Task<int> WriteFileAsync(Project project, string file, FileNameDialogResult input)
         {
-            string extension = Path.GetExtension(file);
-            string template = await TemplateMap.GetTemplateFilePathAsync(project, file);
+            var extension = Path.GetExtension(file);
+            var template = await TemplateMap.GetTemplateFilePathAsync(project, file, input);
 
             if (!string.IsNullOrEmpty(template))
             {
-                int index = template.IndexOf('$');
+                var index = template.IndexOf('$');
 
                 if (index > -1)
                 {
@@ -161,32 +170,34 @@ namespace MadsKristensen.AddAnyFile
         private static Encoding GetFileEncoding(string file)
         {
             string[] noBom = { ".cmd", ".bat", ".json" };
-            string ext = Path.GetExtension(file).ToLowerInvariant();
+            var ext = Path.GetExtension(file).ToLowerInvariant();
 
             if (noBom.Contains(ext))
+            {
                 return new UTF8Encoding(false);
+            }
 
             return new UTF8Encoding(true);
         }
 
-        static string[] GetParsedInput(string input)
+        private static string[] GetParsedInput(string input)
         {
             // var tests = new string[] { "file1.txt", "file1.txt, file2.txt", ".ignore", ".ignore.(old,new)", "license", "folder/",
             //    "folder\\", "folder\\file.txt", "folder/.thing", "page.aspx.cs", "widget-1.(html,js)", "pages\\home.(aspx, aspx.cs)",
             //    "home.(html,js), about.(html,js,css)", "backup.2016.(old, new)", "file.(txt,txt,,)", "file_@#d+|%.3-2...3^&.txt" };
             var pattern = new Regex(@"[,]?([^(,]*)([\.\/\\]?)[(]?((?<=[^(])[^,]*|[^)]+)[)]?");
             var results = new List<string>();
-            Match match = pattern.Match(input);
+            var match = pattern.Match(input);
 
             while (match.Success)
             {
                 // Always 4 matches w. Group[3] being the extension, extension list, folder terminator ("/" or "\"), or empty string
-                string path = match.Groups[1].Value.Trim() + match.Groups[2].Value;
-                string[] extensions = match.Groups[3].Value.Split(',');
+                var path = match.Groups[1].Value.Trim() + match.Groups[2].Value;
+                var extensions = match.Groups[3].Value.Split(',');
 
-                foreach (string ext in extensions)
+                foreach (var ext in extensions)
                 {
-                    string value = path + ext.Trim();
+                    var value = path + ext.Trim();
 
                     // ensure "file.(txt,,txt)" or "file.txt,,file.txt,File.TXT" returns as just ["file.txt"]
                     if (value != "" && !value.EndsWith(".", StringComparison.Ordinal) && !results.Contains(value, StringComparer.OrdinalIgnoreCase))
@@ -199,38 +210,41 @@ namespace MadsKristensen.AddAnyFile
             return results.ToArray();
         }
 
-        private string PromptForFileName(string folder)
+        private FileNameDialogResult PromptForFileName(string folder, string projectName)
         {
             var dir = new DirectoryInfo(folder);
-            var dialog = new FileNameDialog(dir.Name);
+            var dialog = new FileNameDialog(dir.Name, projectName);
 
             var hwnd = new IntPtr(_dte.MainWindow.HWnd);
             var window = (System.Windows.Window)HwndSource.FromHwnd(hwnd).RootVisual;
             dialog.Owner = window;
 
-            bool? result = dialog.ShowDialog();
-            return (result.HasValue && result.Value) ? dialog.Input : string.Empty;
+            var result = dialog.ShowDialog();
+            return (result.HasValue && result.Value) ? dialog.Input : null;
         }
 
         private static string FindFolder(object item)
         {
             if (item == null)
+            {
                 return null;
-
+            }
 
             if (_dte.ActiveWindow is Window2 window && window.Type == vsWindowType.vsWindowTypeDocument)
             {
                 // if a document is active, use the document's containing directory
-                Document doc = _dte.ActiveDocument;
+                var doc = _dte.ActiveDocument;
                 if (doc != null && !string.IsNullOrEmpty(doc.FullName))
                 {
-                    ProjectItem docItem = _dte.Solution.FindProjectItem(doc.FullName);
+                    var docItem = _dte.Solution.FindProjectItem(doc.FullName);
 
                     if (docItem != null && docItem.Properties != null)
                     {
-                        string fileName = docItem.Properties.Item("FullPath").Value.ToString();
+                        var fileName = docItem.Properties.Item("FullPath").Value.ToString();
                         if (File.Exists(fileName))
+                        {
                             return Path.GetDirectoryName(fileName);
+                        }
                     }
                 }
             }
@@ -240,7 +254,7 @@ namespace MadsKristensen.AddAnyFile
             var projectItem = item as ProjectItem;
             if (projectItem != null && "{6BB5F8F0-4483-11D3-8BCF-00C04F8EC28C}" == projectItem.Kind) //Constants.vsProjectItemKindVirtualFolder
             {
-                ProjectItems items = projectItem.ProjectItems;
+                var items = projectItem.ProjectItems;
                 foreach (ProjectItem it in items)
                 {
                     if (File.Exists(it.FileNames[1]))
@@ -255,7 +269,7 @@ namespace MadsKristensen.AddAnyFile
                 var project = item as Project;
                 if (projectItem != null)
                 {
-                    string fileName = projectItem.FileNames[1];
+                    var fileName = projectItem.FileNames[1];
 
                     if (File.Exists(fileName))
                     {

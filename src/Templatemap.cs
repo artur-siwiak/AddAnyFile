@@ -1,33 +1,33 @@
-﻿using System;
+﻿using EnvDTE;
+using Microsoft.VisualStudio.Shell;
+using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using EnvDTE;
-using Microsoft.VisualStudio.Shell;
 
 namespace MadsKristensen.AddAnyFile
 {
-    static class TemplateMap
+    internal static class TemplateMap
     {
-        static readonly string _folder;
-        static readonly string[] _templateFiles;
-        const string _defaultExt = ".txt";
+        private static readonly string _folder;
+        private static readonly string[] _templateFiles;
+        private const string _defaultExt = ".txt";
 
         static TemplateMap()
         {
-            string assembly = Assembly.GetExecutingAssembly().Location;
+            var assembly = Assembly.GetExecutingAssembly().Location;
             _folder = Path.Combine(Path.GetDirectoryName(assembly), "Templates");
             _templateFiles = Directory.GetFiles(_folder, "*" + _defaultExt, SearchOption.AllDirectories);
         }
 
-        public static async Task<string> GetTemplateFilePathAsync(Project project, string file)
+        public static async Task<string> GetTemplateFilePathAsync(Project project, string file, FileNameDialogResult type)
         {
-            string extension = Path.GetExtension(file).ToLowerInvariant();
-            string name = Path.GetFileName(file);
-            string safeName = name.StartsWith(".") ? name : Path.GetFileNameWithoutExtension(file);
-            string relative = PackageUtilities.MakeRelative(project.GetRootFolder(), Path.GetDirectoryName(file));
+            var extension = Path.GetExtension(file).ToLowerInvariant();
+            var name = Path.GetFileName(file);
+            var safeName = name.StartsWith(".") ? name : Path.GetFileNameWithoutExtension(file);
+            var relative = PackageUtilities.MakeRelative(project.GetRootFolder(), Path.GetDirectoryName(file));
 
             string templateFile = null;
 
@@ -40,11 +40,11 @@ namespace MadsKristensen.AddAnyFile
             // Look for file extension matches
             else if (_templateFiles.Any(f => Path.GetFileName(f).Equals(extension + _defaultExt, StringComparison.OrdinalIgnoreCase)))
             {
-                string tmpl = AdjustForSpecific(safeName, extension);
+                var tmpl = AdjustForSpecific(safeName, extension, type);
                 templateFile = GetTemplate(tmpl);
             }
 
-            string template = await ReplaceTokensAsync(project, safeName, relative, templateFile);
+            var template = await ReplaceTokensAsync(project, safeName, relative, templateFile);
             return NormalizeLineEndings(template);
         }
 
@@ -56,10 +56,12 @@ namespace MadsKristensen.AddAnyFile
         private static async Task<string> ReplaceTokensAsync(Project project, string name, string relative, string templateFile)
         {
             if (string.IsNullOrEmpty(templateFile))
+            {
                 return templateFile;
+            }
 
-            string rootNs = project.GetRootNamespace();
-            string ns = string.IsNullOrEmpty(rootNs) ? "MyNamespace" : rootNs;
+            var rootNs = project.GetRootNamespace();
+            var ns = string.IsNullOrEmpty(rootNs) ? "MyNamespace" : rootNs;
 
             if (!string.IsNullOrEmpty(relative))
             {
@@ -68,7 +70,7 @@ namespace MadsKristensen.AddAnyFile
 
             using (var reader = new StreamReader(templateFile))
             {
-                string content = await reader.ReadToEndAsync();
+                var content = await reader.ReadToEndAsync();
 
                 return content.Replace("{namespace}", ns)
                               .Replace("{itemname}", name);
@@ -78,15 +80,34 @@ namespace MadsKristensen.AddAnyFile
         private static string NormalizeLineEndings(string content)
         {
             if (string.IsNullOrEmpty(content))
+            {
                 return content;
+            }
 
             return Regex.Replace(content, @"\r\n|\n\r|\n|\r", "\r\n");
         }
 
-        private static string AdjustForSpecific(string safeName, string extension)
+        private static string AdjustForSpecific(string safeName, string extension, FileNameDialogResult type)
         {
-            if (Regex.IsMatch(safeName, "^I[A-Z].*"))
+            if (type.BaseClass)
+            {
+                return extension += "-base";
+            }
+
+            if (type.Enum)
+            {
+                return extension += "-enum";
+            }
+
+            if (type.Controller)
+            {
+                return extension += "-controller";
+            }
+
+            if (type.Interface)
+            {
                 return extension += "-interface";
+            }
 
             return extension;
         }

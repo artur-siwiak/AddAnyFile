@@ -203,14 +203,26 @@
       <DependentUpon>FileNameDialog.xaml</DependentUpon>
     </Compile>
     <Compile Include="AddAnyFilePackage.cs" />
+    <Compile Include="FileNameDialogResult.cs" />
+    <Compile Include="Helpers\InputTypeHelper.cs" />
     <Compile Include="Helpers\Logger.cs" />
     <Compile Include="Helpers\ProjectHelpers.cs" />
+    <Compile Include="Helpers\SelectedInputType.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="source.extension.cs">
       <DependentUpon>source.extension.vsixmanifest</DependentUpon>
     </Compile>
     <Compile Include="TemplateMap.cs" />
     <Content Include="Templates\.bowerrc.txt">
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Templates\.cs-controller.txt">
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Templates\.cs-enum.txt">
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Templates\.cs-base.txt">
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Templates\.html.txt">
@@ -226,12 +238,6 @@
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Templates\package.json.txt">
-      <IncludeInVSIX>true</IncludeInVSIX>
-    </Content>
-    <Content Include="Templates\.vb.txt">
-      <IncludeInVSIX>true</IncludeInVSIX>
-    </Content>
-    <Content Include="Templates\.vb-interface.txt">
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Templates\.cs-interface.txt">
